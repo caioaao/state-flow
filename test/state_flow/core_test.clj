@@ -7,7 +7,8 @@
             [state-flow.core :as state-flow :refer [deftest]]
             [cats.monad.state :as state]
             [state-flow.state :as sf.state]
-            [com.stuartsierra.component :as component]))
+            [com.stuartsierra.component :as component]
+            [cats.monad.exception :as e]))
 
 (def increment-two
   (m/mlet [world (sf.state/get)]
@@ -146,16 +147,17 @@
   "Flow declaration here"
   initialize-tests-state
   (constantly ::cleanup)
-  (state-flow/verify "a" 1 1)
+  (state-flow/assert "some assertion that will pass"
+    (= 1 1))
   (state/swap #(assoc % :yo 1)))
 
 (deftest test-with-failure
   "Flow declaration here"
   initialize-tests-state
   (constantly ::cleanup)
-  (state-flow/verify "a" 1 2)
+  (state-flow/assert "some assertion that will fail"
+    (= 1 2))
   (m/mlet [s1 (state/get)]
-          (println s1)
           (m/return s1))
   (state/swap #(assoc % :yo 1)))
 
@@ -195,6 +197,24 @@
     (state-flow/ns->tests 'state-flow.core-test)
     => [#'test-with-success
         #'test-with-failure]))
+
+(facts state-flow/assert
+  (fact "returns the proper exception"
+    (try
+      (e/extract (first (state-flow/run-test test-with-failure)))
+      (catch clojure.lang.ExceptionInfo ex (ex-data ex)))
+    => (match {:reason ::state-flow/assertion-failed
+               :form   '((= 1 2))}))
+
+  (fact "short circuits the flow"
+    (-> (state-flow/run-test test-with-failure)
+        second
+        (dissoc :meta))
+    => (match initial-test-state))
+
+  (fact "no-op when successful"
+    (second (state-flow/run-test test-with-success))
+    => (match {:yo 1})))
 
 (facts state-flow/run-test
   (fact "returns result and runs state functions"

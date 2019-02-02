@@ -1,5 +1,6 @@
 (ns state-flow.core
-  (:refer-clojure :exclude [run!])
+  (:refer-clojure :exclude [run!]
+                  :rename {assert core-assert})
   (:require [cats.context :as ctx]
             [cats.core :as m]
             [cats.data :as d]
@@ -106,8 +107,8 @@
 
 (defn run
   [flow initial-state]
-  (assert (state/state? flow) "First argument must be a State Monad")
-  (assert (map? initial-state) "Initial state must be a map")
+  (core-assert (state/state? flow) "First argument must be a State Monad")
+  (core-assert (map? initial-state) "Initial state must be a map")
   (state/run flow initial-state))
 
 (defn run!
@@ -155,3 +156,16 @@
   "Runs test `test-name`defined with `deftest`"
   [test-name]
   `(run-test* (var ~test-name)))
+
+(defmacro assert
+  "Defines a step that, if it doesn't return a `truthy` value, throws an
+  exception."
+  {:style/indent 1}
+  [desc & body]
+  `(flow ~desc
+     [full-desc# (get-description)]
+     (let [ret# ~@body]
+       (or (and ret# (m/return ret#))
+           (throw (ex-info (str "Flow failed at assertion " full-desc#)
+                           {:reason ::assertion-failed
+                            :form '~body}))))))
